@@ -1,0 +1,51 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jerney-frontend
+  namespace: jerney
+  labels:
+    app.kubernetes.io/name: jerney-frontend
+    app.kubernetes.io/part-of: jerney
+    app.kubernetes.io/component: frontend
+  annotations:
+    alb.ingress.kubernetes.io/load-balancer-class: eks.amazonaws.com/alb
+
+    alb.ingress.kubernetes.io/scheme: internet-facing
+
+    alb.ingress.kubernetes.io/target-type: ip
+
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+    alb.ingress.kubernetes.io/success-codes: "200"
+
+    alb.ingress.kubernetes.io/load-balancer-attributes: >-
+      idle_timeout.timeout_seconds=60,
+      routing.http2.enabled=true,
+      access_logs.s3.enabled=false
+
+    alb.ingress.kubernetes.io/tags: "Project=jerney,ManagedBy=k8s-alb-ingress-controller"
+
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: jerney-backend
+                port:
+                  number: 5000
+
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jerney-frontend
+                port:
+                  number: 80
