@@ -15,6 +15,7 @@ env:
   FRONTEND_IMAGE: ghcr.io/muhammad-31/jerney-frontend
 
 jobs:
+  # stage 1 - lint both frontend and backend before anything else
   lint:
     name: Lint Code
     runs-on: ubuntu-latest
@@ -37,6 +38,7 @@ jobs:
       - working-directory: ${{ matrix.component }}
         run: npm run lint
 
+  # stage 2 - check npm dependencies for known vulnerabilities
   sca:
     name: Dependency Audit
     runs-on: ubuntu-latest
@@ -59,6 +61,31 @@ jobs:
       - working-directory: ${{ matrix.component }}
         run: npm audit --audit-level=high || true
 
+  # stage 3 - scan terraform and k8s manifests for misconfigurations
+  iac-scan:
+    name: IaC Security Scan
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform/
+          framework: terraform
+          soft_fail: false
+          skip_check: CKV_AWS_39,CKV_AWS_58
+          output_format: cli
+
+      - uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: k8s_manifest/
+          framework: kubernetes
+          soft_fail: true
+          output_format: cli
+
+  # stage 4 - build images and push to ghcr, skipped on pull requests
   build:
     name: Build Image
     runs-on: ubuntu-latest
@@ -99,6 +126,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # stage 5 - trivy scans the built images for OS and library CVEs
   image-scan:
     name: Image Scan
     runs-on: ubuntu-latest
@@ -121,6 +149,7 @@ jobs:
           vuln-type: os,library
           severity: CRITICAL,HIGH
 
+  # stage 6 - hadolint checks dockerfiles for best practice violations
   dockerfile-lint:
     name: Dockerfile Lint
     runs-on: ubuntu-latest
@@ -136,10 +165,12 @@ jobs:
           dockerfile: ${{ matrix.component }}/Dockerfile
           failure-threshold: warning
 
+  # stage 7 - update image tags in k8s manifests after all scans pass
   update-manifest:
     name: Update K8s Manifest
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
+    needs: [image-scan, dockerfile-lint, iac-scan]
     permissions:
       contents: write
     steps:
@@ -152,9 +183,7 @@ jobs:
 
       - run: |
           TAG=${{ steps.sha.outputs.short }}
-
           sed -i "s|image: .*jerney-backend.*|image: ghcr.io/muhammad-31/jerney-backend:${TAG}|" k8s_manifest/04-backend/deployment.yaml
-
           sed -i "s|image: .*jerney-frontend.*|image: ghcr.io/muhammad-31/jerney-frontend:${TAG}|" k8s_manifest/05-frontend/deployment.yaml
 
       - run: |
