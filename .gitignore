@@ -1,17 +1,11 @@
-# AWS CLI
 aws/
 
-# Env files
 *.env
-
-# Kubernetes sensitive files
 *.pem
 *.key
 
-# OS junk
 .DS_Store
 
-# node modules (if any)
 node_modules/
 .terraform/
 *.tfstate
